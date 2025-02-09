@@ -15,6 +15,19 @@
 
 # Build Targets
 TARGETS := unpriv
+STAMP := stamp
+BUILD_DOCKER_NAME := rvdocs
+
+ifdef realpath
+MANUAL_ROOT_DIR := $(realpath $(PWD)/..)
+else
+MANUAL_ROOT_DIR := $(shell cd .. && pwd)
+endif
+
+ifeq ($(wildcard $(MANUAL_ROOT_DIR)/src/riscv-unprivileged.adoc),)
+  $(error MANUAL_ROOT_DIR=$(MANUAL_ROOT_DIR) is not a RISCV-ISA-MANUAL repo)
+endif
+
 
 # Declare phony targets
 .PHONY: all $(TARGETS) clean
@@ -22,10 +35,22 @@ TARGETS := unpriv
 # Default target builds all
 all: $(TARGETS)
 
-# Build with preinstalled docker container; first install it with:
+# Build with preinstalled docker container;
+# We prevent auto pulling the image by using --pull=never
+# first install it with:
 #   docker pull riscvintl/riscv-docs-base-container-image:latest
-docker:
-	cd .. && docker run -it -v .:/build riscvintl/riscv-docs-base-container-image:latest /bin/sh -c 'cd ./build; make'
+$(STAMP)/container:
+	@echo "Craeting container" $(BUILD_DOCKER_NAME)
+	@mkdir -p $(STAMP)
+	@docker rm $(BUILD_DOCKER_NAME) >/dev/null 2>&1 || true
+	@docker create --name $(BUILD_DOCKER_NAME) --pull=never \
+		-v $(MANUAL_ROOT_DIR):/build riscvintl/riscv-docs-base-container-image:latest \
+		/bin/sh -c 'cd ./build; make'
+	@touch $(STAMP)/container
+
+docker:$(STAMP)/container
+	@echo "Building with docker"
+	@docker start -i $(BUILD_DOCKER_NAME)
 
 # Asciidoctor options
 ASCIIDOCTOR_OPTS := -a compress \
@@ -38,7 +63,7 @@ ASCIIDOCTOR_OPTS := -a compress \
                     --trace
 
 # Source directory
-SRCDIR := ../src
+SRCDIR := $(MANUAL_ROOT_DIR)/src
 
 # Unprivileged ISA build
 unpriv: unpriv-isa-asciidoc.pdf
@@ -54,3 +79,4 @@ clean:
 		echo "Removing unpriv-isa-asciidoc.pdf"; \
 		rm -f unpriv-isa-asciidoc.pdf; \
 	fi
+	@docker rm $(BUILD_DOCKER_NAME) >/dev/null 2>&1 && rm $(STAMP)/container || true

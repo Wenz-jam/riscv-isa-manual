@@ -4,3 +4,5 @@
 src/.asciidoctor
 src/diag*
 **/*.bak
+
+build/stamp/*
